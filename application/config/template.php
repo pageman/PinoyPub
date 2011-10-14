@@ -5,7 +5,7 @@ $config['template_view_directory'] = 'templates/';
 
 $config['template_assets_directory'] = '/assets/templates/';
 
-$config['template_default'] = 'weadmin';
+$config['template_default'] = '52framework';
 
 $config['template_admin'] = 'weadmin';
 
