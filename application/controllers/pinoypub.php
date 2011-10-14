@@ -27,9 +27,10 @@ class Pinoypub extends CI_Controller {
 	function __construct()
 	{
 		parent::__construct();
+		$this->load->model('pinoypub_model');
 	}
 
-	function get_json_home_activity($encrypted_device_id, $recently_read = '')
+	function get_json_home_activity($encrypted_device_id, $device_model = '0', $recently_read = '')
 	{
 		// Create a new user if the user is new
 		$customer_query = $this->db->get_where('customers', array('device_id' => $encrypted_device_id));
@@ -39,7 +40,8 @@ class Pinoypub extends CI_Controller {
 			// Create a new customer
 			$customer_data = array(
 				'device_id' => $encrypted_device_id,
-				'time_created' => now()
+				'time_created' => now(),
+				'model' => $device_model
 			);
 
 			$this->db->insert('customers', $customer_data);
@@ -457,8 +459,17 @@ class Pinoypub extends CI_Controller {
 		}
 	}
 
-	function activate($device_id = '', $time = 0, $token = '', $subscription_duration = 0)
+	function activate()
 	{
+		$device_id = $this->input->post('device_id');
+		$time = $this->input->post('time_now');
+		$token = $this->input->post('token');
+		$subscription_duration = $this->input->post('subscription_duration');
+		$json_string = $this->input->post('json_string');
+		$amount = $this->input->post('amount');
+
+		$transaction_data = json_decode($json_string);
+
 		$purchase_query = $this->db->get_where('customer_purchases', array('token' => $token));
 
 		if ($purchase_query->num_rows() > 0)
@@ -497,11 +508,39 @@ class Pinoypub extends CI_Controller {
 				$purchase_data['time_purchase_end'] = $new_time_purchase_end;
 				$purchase_data['time_device'] = $time;
 				$purchase_data['token'] = $token;
+				$purchase_data['amount_paid'] = $amount;
 
 				$this->db->insert('customer_purchases', $purchase_data);
 
-				$data['status'] = 'ok';
-				$data['message'] = 'Subscription successfully activated';
+				$customer_purchase_id = $this->db->insert_id();
+
+				if ($customer_purchase_id)
+				{
+					// Create a new wac_transactions row
+					// Test first
+					$wac_transaction['amount'] = $this->input->post('amount');
+					$wac_transaction['total_amount_charged'] = $this->input->post('total_amount_charged');
+					$wac_transaction['currency'] = $this->input->post('currency');
+					$wac_transaction['status'] = $this->input->post('status');
+					$wac_transaction['reference_code'] = $this->input->post('reference_code');
+					$wac_transaction['server_reference_code'] = $this->input->post('server_reference_code');
+
+					$wac_transaction['json_string'] = $json_string;
+					$this->db->insert('wac_transactions', $wac_transaction);
+					
+					$wac_transaction_id = $this->db->insert_id();
+
+					$this->db->where('id')
+						->update('customer_purchases', array('wac_transaction_id' => $wac_transaction_id));
+
+					$data['status'] = 'ok';
+					$data['message'] = 'Subscription successfully activated';
+				}
+				else
+				{
+					$data['status'] = 'error';
+					$data['message'] = 'Customer purchase failed to insert.';
+				}
 			}
 			else
 			{
@@ -592,7 +631,7 @@ class Pinoypub extends CI_Controller {
 			echo "Please subscribe first";
 		}
 	}
-	
+
 	function test()
 	{
 		$this->load->view('books/main_layout');
